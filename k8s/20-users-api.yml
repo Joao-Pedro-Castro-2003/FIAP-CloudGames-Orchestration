@@ -1,0 +1,51 @@
+﻿apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: users-api
+  namespace: fiap-cloud-games
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: users-api
+  template:
+    metadata:
+      labels:
+        app: users-api
+    spec:
+      containers:
+        - name: users-api
+          image: fiap-users-api:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: fiap-cloud-games-config
+            - secretRef:
+                name: fiap-cloud-games-secret
+          env:
+            - name: ASPNETCORE_URLS
+              value: http://+:8080
+            - name: ConnectionStrings__Db
+              value: Data Source=/app/data/users.db
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: users-api
+  namespace: fiap-cloud-games
+spec:
+  selector:
+    app: users-api
+  ports:
+    - port: 8080
+      targetPort: 8080
+      nodePort: 30001
+  type: NodePort
