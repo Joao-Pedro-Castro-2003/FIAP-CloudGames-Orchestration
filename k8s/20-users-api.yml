@@ -1,51 +1,84 @@
-﻿apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: users-api
-  namespace: fiap-cloud-games
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: users-api
-  template:
-    metadata:
-      labels:
+apiVersion: v1
+kind: List
+items:
+- apiVersion: v1
+  kind: PersistentVolumeClaim
+  metadata:
+    name: users-data
+    namespace: fiap-cloud-games
+  spec:
+    accessModes:
+    - ReadWriteOnce
+    resources:
+      requests:
+        storage: 1Gi
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: users-api
+    namespace: fiap-cloud-games
+  spec:
+    replicas: 1
+    strategy:
+      type: Recreate
+    selector:
+      matchLabels:
         app: users-api
-    spec:
-      containers:
+    template:
+      metadata:
+        labels:
+          app: users-api
+      spec:
+        containers:
         - name: users-api
-          image: fiap-users-api:latest
+          image: fiap-users-api:fase3
           imagePullPolicy: IfNotPresent
           ports:
-            - containerPort: 8080
-          envFrom:
-            - configMapRef:
-                name: fiap-cloud-games-config
-            - secretRef:
-                name: fiap-cloud-games-secret
+          - containerPort: 8080
           env:
-            - name: ASPNETCORE_URLS
-              value: http://+:8080
-            - name: ConnectionStrings__Db
-              value: Data Source=/app/data/users.db
+          - name: ConnectionStrings__Db
+            value: Data Source=/app/data/users.db
+          envFrom:
+          - configMapRef:
+              name: fcg-config
+          - secretRef:
+              name: fcg-secrets
           volumeMounts:
-            - name: data
-              mountPath: /app/data
-      volumes:
+          - name: data
+            mountPath: /app/data
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 1000m
+              memory: 768Mi
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 15
+        volumes:
         - name: data
-          emptyDir: {}
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: users-api
-  namespace: fiap-cloud-games
-spec:
-  selector:
-    app: users-api
-  ports:
-    - port: 8080
+          persistentVolumeClaim:
+            claimName: users-data
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: users-api
+    namespace: fiap-cloud-games
+  spec:
+    selector:
+      app: users-api
+    ports:
+    - name: port-0
+      port: 8080
       targetPort: 8080
-      nodePort: 30001
-  type: NodePort
+    type: ClusterIP
