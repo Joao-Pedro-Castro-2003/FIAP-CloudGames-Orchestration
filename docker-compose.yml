@@ -1,85 +1,294 @@
-﻿services:
+name: fiap-fase3
+services:
   rabbitmq:
-    image: rabbitmq:3-management
-    container_name: fiap-rabbitmq
+    image: rabbitmq:3.13-management
+    hostname: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: fcg
+      RABBITMQ_DEFAULT_PASS: ${RABBIT_PASSWORD}
     ports:
-      - "5672:5672"
-      - "15672:15672"
+    - 127.0.0.1:15672:15672
+    volumes:
+    - rabbit-data:/var/lib/rabbitmq
+    - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+    - ./.local/definitions.json:/etc/rabbitmq/definitions.json:ro
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "ping"]
-      interval: 10s
+      test:
+      - CMD
+      - rabbitmq-diagnostics
+      - -q
+      - ping
+      interval: 5s
       timeout: 5s
-      retries: 5
-
+      retries: 20
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+  mongo:
+    image: mongo:7.0
+    volumes:
+    - mongo-data:/data/db
+    healthcheck:
+      test:
+      - CMD
+      - mongosh
+      - --quiet
+      - --eval
+      - db.adminCommand('ping').ok
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+  redis:
+    image: redis:7.4-alpine
+    command:
+    - redis-server
+    - --maxmemory
+    - 128mb
+    - --maxmemory-policy
+    - allkeys-lru
+    healthcheck:
+      test:
+      - CMD
+      - redis-cli
+      - ping
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:3.35.0
+    command:
+    - azurite
+    - --blobHost
+    - 0.0.0.0
+    - --queueHost
+    - 0.0.0.0
+    - --tableHost
+    - 0.0.0.0
+    - --skipApiVersionCheck
+    - --disableProductStyleUrl
+    volumes:
+    - azurite-data:/data
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    environment:
+      AZURITE_ACCOUNTS: ${AZURITE_ACCOUNTS}
   users-api:
     build:
       context: ../FIAP-UsersAPI
-      dockerfile: Dockerfile
-    container_name: fiap-users-api
+    image: fiap-users-api:fase3
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      RabbitMq__Host: rabbitmq
+      RabbitMq__Username: fcg
+      RabbitMq__Password: ${RABBIT_PASSWORD}
+      Jwt__Key: ${JWT_KEY}
+      Jwt__Issuer: FiapCloudGames
+      Jwt__Audience: FiapCloudGames
+      Mongo__ConnectionString: mongodb://mongo:27017/?serverSelectionTimeoutMS=3000
+      ConnectionStrings__Db: Data Source=/app/data/users.db
+      Bootstrap__AdminEmail: ${ADMIN_EMAIL}
+      Bootstrap__AdminPassword: ${ADMIN_PASSWORD}
     depends_on:
       rabbitmq:
         condition: service_healthy
-    environment:
-      ASPNETCORE_URLS: http://+:8080
-      ConnectionStrings__Db: Data Source=/app/data/users.db
-      RabbitMq__Host: rabbitmq
-      Jwt__Key: ${JWT_KEY:-FIAP-TechChallenge-chave-local-dev-com-pelo-menos-32-caracteres}
-      Jwt__Issuer: ${JWT_ISSUER:-FiapCloudGames}
-      Jwt__Audience: ${JWT_AUDIENCE:-FiapCloudGamesUsers}
-    ports:
-      - "5001:8080"
     volumes:
-      - users-data:/app/data
-
+    - users-data:/app/data
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
   catalog-api:
     build:
       context: ../FIAP-CatalogAPI
-      dockerfile: Dockerfile
-    container_name: fiap-catalog-api
+    image: fiap-catalog-api:fase3
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      RabbitMq__Host: rabbitmq
+      RabbitMq__Username: fcg
+      RabbitMq__Password: ${RABBIT_PASSWORD}
+      Jwt__Key: ${JWT_KEY}
+      Jwt__Issuer: FiapCloudGames
+      Jwt__Audience: FiapCloudGames
+      Mongo__ConnectionString: mongodb://mongo:27017/?serverSelectionTimeoutMS=3000
+      ConnectionStrings__Db: Data Source=/app/data/catalog.db
+      Redis__ConnectionString: redis:6379,abortConnect=false,connectTimeout=1000,syncTimeout=1000,asyncTimeout=1000
     depends_on:
       rabbitmq:
         condition: service_healthy
-    environment:
-      ASPNETCORE_URLS: http://+:8080
-      ConnectionStrings__Db: Data Source=/app/data/catalog.db
-      RabbitMq__Host: rabbitmq
-      Jwt__Key: ${JWT_KEY:-FIAP-TechChallenge-chave-local-dev-com-pelo-menos-32-caracteres}
-      Jwt__Issuer: ${JWT_ISSUER:-FiapCloudGames}
-      Jwt__Audience: ${JWT_AUDIENCE:-FiapCloudGamesUsers}
-    ports:
-      - "5002:8080"
+      mongo:
+        condition: service_healthy
     volumes:
-      - catalog-data:/app/data
-
+    - catalog-data:/app/data
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
   payments-api:
     build:
       context: ../FIAP-PaymentsAPI
-      dockerfile: Dockerfile
-    container_name: fiap-payments-api
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
+    image: fiap-payments-api:fase3
     environment:
       ASPNETCORE_URLS: http://+:8080
       RabbitMq__Host: rabbitmq
-      Payment__ApprovalRate: ${PAYMENT_APPROVAL_RATE:-90}
-    ports:
-      - "5003:8080"
-
-  notifications-api:
+      RabbitMq__Username: fcg
+      RabbitMq__Password: ${RABBIT_PASSWORD}
+      Jwt__Key: ${JWT_KEY}
+      Jwt__Issuer: FiapCloudGames
+      Jwt__Audience: FiapCloudGames
+      Mongo__ConnectionString: mongodb://mongo:27017/?serverSelectionTimeoutMS=3000
+      Payment__ApprovalRate: ${PAYMENT_APPROVAL_RATE:-100}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+  notifications-function:
     build:
-      context: ../FIAP-NotificationsAPI
-      dockerfile: Dockerfile
-    container_name: fiap-notifications-api
+      context: ../FIAP-NotificationsFunction
+    image: fiap-notifications-function:fase3
+    environment:
+      FUNCTIONS_WORKER_RUNTIME: dotnet-isolated
+      AzureWebJobsStorage: ${AZURITE_CONNECTION}
+      RabbitMQConnection: amqp://fcg:${RABBIT_PASSWORD}@rabbitmq:5672
+      Mongo__ConnectionString: mongodb://mongo:27017/?serverSelectionTimeoutMS=3000
     depends_on:
       rabbitmq:
         condition: service_healthy
+      mongo:
+        condition: service_healthy
+      azurite:
+        condition: service_started
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+  kong:
+    image: kong:3.9
     environment:
-      ASPNETCORE_URLS: http://+:8080
-      RabbitMq__Host: rabbitmq
+      KONG_NGINX_WORKER_PROCESSES: '2'
+      KONG_DATABASE: 'off'
+      KONG_DECLARATIVE_CONFIG: /etc/kong/kong.yml
+      KONG_ADMIN_LISTEN: 'off'
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+    volumes:
+    - ./.local/kong.yml:/etc/kong/kong.yml:ro
     ports:
-      - "5004:8080"
-
+    - 127.0.0.1:8000:8000
+    depends_on:
+    - users-api
+    - catalog-api
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+  prometheus:
+    image: prom/prometheus:v3.2.1
+    volumes:
+    - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    - prometheus-data:/prometheus
+    ports:
+    - 127.0.0.1:9090:9090
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+  loki:
+    image: grafana/loki:3.4.2
+    command:
+    - -config.file=/etc/loki/config.yml
+    volumes:
+    - ./monitoring/loki.yml:/etc/loki/config.yml:ro
+    - loki-data:/loki
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+  alloy:
+    image: grafana/alloy:v1.8.3
+    user: '0'
+    command:
+    - run
+    - /etc/alloy/config.alloy
+    - --storage.path=/var/lib/alloy
+    volumes:
+    - ./monitoring/compose.alloy:/etc/alloy/config.alloy:ro
+    - /var/run/docker.sock:/var/run/docker.sock:ro
+    - alloy-data:/var/lib/alloy
+    depends_on:
+    - loki
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+  grafana:
+    image: grafana/grafana:11.6.0
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+    ports:
+    - 127.0.0.1:3000:3000
+    volumes:
+    - grafana-data:/var/lib/grafana
+    - ./monitoring/datasources.yml:/etc/grafana/provisioning/datasources/fcg.yml:ro
+    - ./monitoring/dashboards.yml:/etc/grafana/provisioning/dashboards/fcg.yml:ro
+    - ./monitoring/fcg-dashboard.json:/var/lib/grafana/dashboards/fcg.json:ro
+    depends_on:
+    - prometheus
+    - loki
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
 volumes:
-  users-data:
-  catalog-data:
+  rabbit-data: {}
+  mongo-data: {}
+  azurite-data: {}
+  users-data: {}
+  catalog-data: {}
+  prometheus-data: {}
+  loki-data: {}
+  alloy-data: {}
+  grafana-data: {}

@@ -1,0 +1,22 @@
+discovery.docker "fcg" {
+  host = "unix:///var/run/docker.sock"
+  filter {
+    name = "label"
+    values = ["com.docker.compose.project=fiap-fase3"]
+  }
+}
+discovery.relabel "fcg" {
+  targets = discovery.docker.fcg.targets
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label = "service"
+  }
+}
+loki.source.docker "fcg" {
+  host = "unix:///var/run/docker.sock"
+  targets = discovery.relabel.fcg.output
+  forward_to = [loki.write.local.receiver]
+}
+loki.write "local" {
+  endpoint { url = "http://loki:3100/loki/api/v1/push" }
+}
