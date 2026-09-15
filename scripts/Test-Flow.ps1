@@ -37,9 +37,12 @@ do {
 } while ($status.status -eq 'Pending' -and [DateTime]::UtcNow -lt $deadline)
 if ($status.status -eq 'Pending') { throw 'Pagamento nao processado em 120s. Verifique RabbitMQ e PaymentsAPI.' }
 if ($status.price -ne 80) { throw "Compra nao aplicou promocao: $($status.price)" }
-$library = @((Send-Api GET '/api/library/me' $null $login.token).Content | ConvertFrom-Json)
-if ($status.status -eq 'Approved' -and !($library | Where-Object id -eq $game.id)) { throw 'Jogo aprovado ausente da biblioteca' }
-if ($status.status -eq 'Rejected' -and ($library | Where-Object id -eq $game.id)) { throw 'Jogo rejeitado foi adicionado a biblioteca' }
+# Windows PowerShell 5.1 returns the JSON array as one pipeline object.
+# Assign it directly before enumerating, avoiding a nested array.
+$library = (Send-Api GET '/api/library/me' $null $login.token).Content | ConvertFrom-Json
+$ownedGames = @($library | Where-Object { $null -ne $_ -and $_.id -eq $game.id })
+if ($status.status -eq 'Approved' -and $ownedGames.Count -eq 0) { throw 'Jogo aprovado ausente da biblioteca' }
+if ($status.status -eq 'Rejected' -and $ownedGames.Count -gt 0) { throw 'Jogo rejeitado foi adicionado a biblioteca' }
 $reviewPath = "/api/games/$($game.id)/reviews"
 $null = Send-Api PUT "$reviewPath/me" @{rating=5;comment='Excelente';tags=@('aventura')} $login.token
 $first = Send-Api GET $reviewPath $null $login.token
