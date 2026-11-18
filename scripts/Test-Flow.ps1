@@ -45,8 +45,13 @@ if ($status.status -eq 'Approved' -and $ownedGames.Count -eq 0) { throw 'Jogo ap
 if ($status.status -eq 'Rejected' -and $ownedGames.Count -gt 0) { throw 'Jogo rejeitado foi adicionado a biblioteca' }
 $reviewPath = "/api/games/$($game.id)/reviews"
 $null = Send-Api PUT "$reviewPath/me" @{rating=5;comment='Excelente';tags=@('aventura')} $login.token
+$timer = [Diagnostics.Stopwatch]::StartNew()
 $first = Send-Api GET $reviewPath $null $login.token
+$coldMs = $timer.Elapsed.TotalMilliseconds
+$timer.Restart()
 $second = Send-Api GET $reviewPath $null $login.token
+$warmMs = $timer.Elapsed.TotalMilliseconds
+Write-Host ('Redis MISS: {0:N1} ms | HIT: {1:N1} ms' -f $coldMs, $warmMs)
 if ($first.Headers['X-Cache'] -ne 'MISS' -or $second.Headers['X-Cache'] -ne 'HIT') { throw 'Esperado MISS seguido de HIT no Redis' }
 $null = Send-Api PUT "$reviewPath/me" @{rating=4;comment='Atualizado';tags=@('coop')} $login.token
 $updated = Send-Api GET $reviewPath $null $login.token

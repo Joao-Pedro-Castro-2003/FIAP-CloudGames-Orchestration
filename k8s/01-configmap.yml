@@ -9,6 +9,4 @@ data:
   RabbitMq__Username: fcg
   Jwt__Issuer: FiapCloudGames
   Jwt__Audience: FiapCloudGames
-  Mongo__ConnectionString: mongodb://mongo:27017/?serverSelectionTimeoutMS=3000
-  Redis__ConnectionString: redis:6379,abortConnect=false,connectTimeout=1000,syncTimeout=1000,asyncTimeout=1000
   FUNCTIONS_WORKER_RUNTIME: dotnet-isolated

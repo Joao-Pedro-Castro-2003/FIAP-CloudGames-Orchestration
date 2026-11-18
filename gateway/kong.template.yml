@@ -32,7 +32,7 @@ services:
     url: http://catalog-api:8080
     routes:
       - name: catalog-protected
-        paths: ["/api/games", "/api/promotions", "/api/library", "/api/orders"]
+        paths: ["/search", "/api/games", "/api/promotions", "/api/library", "/api/orders"]
         strip_path: false
     plugins:
       - name: jwt

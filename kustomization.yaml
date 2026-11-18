@@ -7,6 +7,8 @@ resources:
 - k8s/10-rabbitmq.yml
 - k8s/11-storage.yml
 - k8s/20-users-api.yml
+- k8s/12-search.yml
+- k8s/13-postgres.yml
 - k8s/21-catalog-api.yml
 - k8s/22-payments-api.yml
 - k8s/30-kong.yml
