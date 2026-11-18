@@ -1,5 +1,14 @@
 name: fiap-fase3
 services:
+  opensearch:
+    image: opensearchproject/opensearch:2.19.4
+    environment:
+      discovery.type: single-node
+      DISABLE_SECURITY_PLUGIN: 'true'
+      DISABLE_INSTALL_DEMO_CONFIG: 'true'
+      OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
+    volumes:
+    - search-data:/usr/share/opensearch/data
   rabbitmq:
     image: rabbitmq:3.13-management
     hostname: rabbitmq
@@ -7,7 +16,7 @@ services:
       RABBITMQ_DEFAULT_USER: fcg
       RABBITMQ_DEFAULT_PASS: ${RABBIT_PASSWORD}
     ports:
-    - 127.0.0.1:15672:15672
+    - 127.0.0.1:${RABBIT_UI_PORT:-15672}:15672
     volumes:
     - rabbit-data:/var/lib/rabbitmq
     - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
@@ -103,8 +112,8 @@ services:
       Jwt__Key: ${JWT_KEY}
       Jwt__Issuer: FiapCloudGames
       Jwt__Audience: FiapCloudGames
-      Mongo__ConnectionString: mongodb://mongo:27017/?serverSelectionTimeoutMS=3000
-      ConnectionStrings__Db: Data Source=/app/data/users.db
+      Mongo__ConnectionString: ${MONGO_CONNECTION}
+      ConnectionStrings__Db: ${USERS_DB_CONNECTION}
       Bootstrap__AdminEmail: ${ADMIN_EMAIL}
       Bootstrap__AdminPassword: ${ADMIN_PASSWORD}
     depends_on:
@@ -130,9 +139,10 @@ services:
       Jwt__Key: ${JWT_KEY}
       Jwt__Issuer: FiapCloudGames
       Jwt__Audience: FiapCloudGames
-      Mongo__ConnectionString: mongodb://mongo:27017/?serverSelectionTimeoutMS=3000
-      ConnectionStrings__Db: Data Source=/app/data/catalog.db
-      Redis__ConnectionString: redis:6379,abortConnect=false,connectTimeout=1000,syncTimeout=1000,asyncTimeout=1000
+      Mongo__ConnectionString: ${MONGO_CONNECTION}
+      Search__Url: http://opensearch:9200
+      ConnectionStrings__Db: ${CATALOG_DB_CONNECTION}
+      Redis__ConnectionString: ${REDIS_CONNECTION}
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -158,7 +168,7 @@ services:
       Jwt__Key: ${JWT_KEY}
       Jwt__Issuer: FiapCloudGames
       Jwt__Audience: FiapCloudGames
-      Mongo__ConnectionString: mongodb://mongo:27017/?serverSelectionTimeoutMS=3000
+      Mongo__ConnectionString: ${MONGO_CONNECTION}
       Payment__ApprovalRate: ${PAYMENT_APPROVAL_RATE:-100}
     depends_on:
       rabbitmq:
@@ -172,14 +182,15 @@ services:
         max-size: 10m
         max-file: '3'
   notifications-function:
+    profiles: [notifications]
     build:
       context: ../FIAP-NotificationsFunction
     image: fiap-notifications-function:fase3
     environment:
       FUNCTIONS_WORKER_RUNTIME: dotnet-isolated
       AzureWebJobsStorage: ${AZURITE_CONNECTION}
-      RabbitMQConnection: amqp://fcg:${RABBIT_PASSWORD}@rabbitmq:5672
-      Mongo__ConnectionString: mongodb://mongo:27017/?serverSelectionTimeoutMS=3000
+      RabbitMQConnection: ${RABBIT_CONNECTION}
+      Mongo__ConnectionString: ${MONGO_CONNECTION}
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -205,7 +216,7 @@ services:
     volumes:
     - ./.local/kong.yml:/etc/kong/kong.yml:ro
     ports:
-    - 127.0.0.1:8000:8000
+    - 127.0.0.1:${GATEWAY_PORT:-8000}:8000
     depends_on:
     - users-api
     - catalog-api
@@ -221,7 +232,7 @@ services:
     - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     - prometheus-data:/prometheus
     ports:
-    - 127.0.0.1:9090:9090
+    - 127.0.0.1:${PROMETHEUS_PORT:-9090}:9090
     restart: unless-stopped
     logging:
       driver: json-file
@@ -267,7 +278,7 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
       GF_USERS_ALLOW_SIGN_UP: 'false'
     ports:
-    - 127.0.0.1:3000:3000
+    - 127.0.0.1:${GRAFANA_PORT:-3000}:3000
     volumes:
     - grafana-data:/var/lib/grafana
     - ./monitoring/datasources.yml:/etc/grafana/provisioning/datasources/fcg.yml:ro
@@ -283,6 +294,7 @@ services:
         max-size: 10m
         max-file: '3'
 volumes:
+  search-data: {}
   rabbit-data: {}
   mongo-data: {}
   azurite-data: {}

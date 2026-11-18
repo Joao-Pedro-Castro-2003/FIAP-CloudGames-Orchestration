@@ -27,7 +27,18 @@ if ($values.RABBIT_PASSWORD -notmatch '^[a-zA-Z0-9_-]+$') { throw 'RABBIT_PASSWO
 New-Item -ItemType Directory -Force -Path "$FcgRoot/.local" | Out-Null
 $kong = [IO.File]::ReadAllText("$FcgRoot/gateway/kong.template.yml").Replace('__JWT_KEY__', $values.JWT_KEY)
 [IO.File]::WriteAllText("$FcgRoot/.local/kong.yml", $kong, $utf8)
+# Preserve the database password across updates of an existing local cluster.
+$postgresPath = "$FcgRoot/.local/postgres-password"
+if (!(Test-Path -LiteralPath $postgresPath)) {
+    [IO.File]::WriteAllText($postgresPath, (New-FcgSecret), $utf8)
+}
+$postgresPassword = [IO.File]::ReadAllText($postgresPath).Trim()
 $settings = @(
+    "POSTGRES_PASSWORD=$postgresPassword",
+    'Mongo__ConnectionString=mongodb://mongo:27017/?serverSelectionTimeoutMS=3000',
+    'Redis__ConnectionString=redis:6379,abortConnect=false,connectTimeout=1000,syncTimeout=1000,asyncTimeout=1000',
+    "USERS_DB_CONNECTION=Host=postgres;Database=fcg_users;Username=fcg;Password=$postgresPassword",
+    "CATALOG_DB_CONNECTION=Host=postgres;Database=fcg_catalog;Username=fcg;Password=$postgresPassword",
     "Jwt__Key=$($values.JWT_KEY)", "RabbitMq__Password=$($values.RABBIT_PASSWORD)",
     "RabbitMQConnection=amqp://fcg:$($values.RABBIT_PASSWORD)@rabbitmq.fiap-cloud-games.svc.cluster.local:5672",
     "RABBITMQ_DEFAULT_USER=fcg", "RABBITMQ_DEFAULT_PASS=$($values.RABBIT_PASSWORD)",
@@ -37,6 +48,14 @@ $settings = @(
     "AzureWebJobsStorage=$($values.AZURITE_CONNECTION)", "AZURITE_ACCOUNTS=$($values.AZURITE_ACCOUNTS)"
 )
 [IO.File]::WriteAllLines("$FcgRoot/.local/app.env", $settings, $utf8)
+$composeSettings = @(
+    "RABBIT_CONNECTION=amqp://fcg:$($values.RABBIT_PASSWORD)@rabbitmq:5672",
+    'MONGO_CONNECTION=mongodb://mongo:27017/?serverSelectionTimeoutMS=3000',
+    'REDIS_CONNECTION=redis:6379,abortConnect=false,connectTimeout=1000,syncTimeout=1000,asyncTimeout=1000',
+    'USERS_DB_CONNECTION=Data Source=/app/data/users.db',
+    'CATALOG_DB_CONNECTION=Data Source=/app/data/catalog.db'
+)
+[IO.File]::WriteAllLines("$FcgRoot/.local/compose.env", $composeSettings, $utf8)
 # Importar definicoes impede a criacao automatica do usuario padrao do RabbitMQ.
 # Inclua o usuario local e suas permissoes no arquivo gerado, mantendo a senha fora do Git.
 $salt = New-Object byte[] 4

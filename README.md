@@ -135,3 +135,16 @@ Stop-Compose preserva os volumes. Parar e iniciar Docker preserva o cluster kind
 - [prometheus-net](https://github.com/prometheus-net/prometheus-net)
 - [MongoDB .NET](https://www.mongodb.com/docs/drivers/csharp/current/)
 - [Grafana Alloy e logs Kubernetes](https://grafana.com/docs/alloy/latest/reference/components/loki/loki.source.kubernetes/)
+
+## Fase 4
+
+- Para usar Docker Compose, abra o Docker Desktop em modo Linux e rode `./scripts/Start-Compose.ps1`.
+- Para usar kind, rode `./scripts/Start-Kubernetes.ps1`. O OpenSearch local usa um volume próprio e fica acessível somente na rede interna. O host Linux do Docker precisa atender ao requisito de `vm.max_map_count` do OpenSearch.
+- Os dois comandos aceitam `-WithNotifications` se o repositório irmão `FIAP-NotificationsFunction` estiver disponível.
+- Rode `./scripts/Test-Search.ps1` para demonstrar busca autenticada com erro de digitação, atualização e exclusão do índice. O catálogo é a fonte de verdade. A fila SQLite registra mudanças na mesma transação e o worker as processa de forma assíncrona.
+- Rode `./scripts/Test-Flow.ps1` para demonstrar gravação e leitura das avaliações no MongoDB, `MISS` e `HIT` no Redis, tempos observados e invalidação após escrita. Compare várias execuções para reduzir o efeito de inicialização e latência do ambiente.
+- O GitHub Actions em UsersAPI e CatalogAPI compila, testa e gera imagens com tag do commit. A ligação com o registry e o cluster de produção está descrita em [Fase 4](FASE-4.md).
+
+No kind, UsersAPI e CatalogAPI usam duas réplicas e PostgreSQL compartilhado, com um banco por serviço. O primeiro uso cria bancos de demonstração vazios. Os volumes SQLite anteriores ficam preservados, e o Compose continua usando SQLite. Os registros antigos precisam de migração explícita para aparecer no PostgreSQL.
+
+Execute `./scripts/Test-Rollout.ps1` após subir o kind. O script reinicia os deployments em sequência e exercita login e catálogo pelo gateway enquanto os pods são substituídos.
